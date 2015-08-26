@@ -10,32 +10,27 @@ package workman.engine;
 import static org.junit.Assert.assertNotNull;
 
 import java.io.IOException;
-import java.net.SocketAddress;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
-import workman.spider.Spider;
+import workman.task.Spider;
 
 /**
- * NIO引擎
+ * 抓取引擎
  *
  * @anthor yebin
  * @data 2015年8月26日
  */
-public class DefaultEngine extends AbstractEngine {
+public class SpiderEngine extends AbstractEngine<Spider> {
 
-	private final Logger logger = LogManager.getLogger(getClass());
 	private Selector selector;
 
-	public DefaultEngine(int size) {
+	public SpiderEngine(int size) {
 		super(size);
-		initialize();
 	}
 
 	/**
@@ -43,7 +38,7 @@ public class DefaultEngine extends AbstractEngine {
 	 * 
 	 * @throws IOException
 	 */
-	private void initialize() {
+	protected void initialize() {
 		try {
 			selector = Selector.open();
 			logger.info("引擎初始化完毕");
@@ -57,22 +52,19 @@ public class DefaultEngine extends AbstractEngine {
 	}
 
 	/**
-	 * 注册蜘蛛
+	 * 注册任务
 	 * 
 	 * @param spider
 	 */
 	protected void register(Spider spider) {
 		assertNotNull(spider);
 		assertNotNull(selector);
-		SocketAddress address = spider.getSocketAddress();
-		SocketChannel channel = null;
+		SelectableChannel channel = spider.getChannel();
 		try {
-			channel = SocketChannel.open(address);
 			channel.register(selector, SelectionKey.OP_READ);
 		} catch (IOException e) {
-			logger.error("注册SocketChannel失败：" + address);
+			logger.error("注册任务失败：" + spider);
 			logger.debug(e);
-		} finally {
 			IOUtils.closeQuietly(channel);
 		}
 	}
@@ -80,17 +72,18 @@ public class DefaultEngine extends AbstractEngine {
 	public void start() {
 		assertNotNull(selector);
 		int count = 0;
-		int limit = limit();
+		status = STATUS_RUNNING;
 		while (true) {
 			// 读入数据
-			while (limit > count) {
-				register(spiderQueue.poll());
+			while (limit() > count) {
+				register(taskQueue.poll());
 				count++;
 			}
 			Iterator<SelectionKey> it = selector.selectedKeys().iterator();
 			while (it.hasNext()) {
 				SelectionKey key = it.next();
 				if (key.isReadable()) {
+					SelectableChannel channel = key.channel();
 					count--;
 				}
 				it.remove();
@@ -100,14 +93,6 @@ public class DefaultEngine extends AbstractEngine {
 
 	public void close() {
 		IOUtils.closeQuietly(selector);
-	}
-
-	/**
-	 * 数量限制
-	 * 
-	 * @return
-	 */
-	private synchronized int limit() {
-		return spiderQueue.remainingCapacity() + spiderQueue.size();
+		status = STATUS_CLOSED;
 	}
 }
