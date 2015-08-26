@@ -7,12 +7,12 @@
  */
 package workman.engine;
 
+import java.io.IOException;
 import java.nio.channels.Channel;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import workman.task.Task;
 
@@ -22,10 +22,9 @@ import workman.task.Task;
  * @anthor yebin
  * @data 2015年8月26日
  */
-public abstract class AbstractEngine<T extends Task<? extends Channel>>
+public abstract class AbstractEngine<T extends Task<?>, C extends Channel>
 		implements Engine<T> {
-
-	protected final Logger logger = LogManager.getLogger(getClass());
+	private ExecutorService taskExecutor;
 
 	protected int status = STATUS_UNREADY;
 
@@ -42,12 +41,18 @@ public abstract class AbstractEngine<T extends Task<? extends Channel>>
 		taskQueue = new ArrayBlockingQueue<T>(size);
 		status = STATUS_READY;
 		limit = size;
+		taskExecutor = Executors.newFixedThreadPool(size);
 		initialize();
 	}
 
+	/**
+	 * 初始化
+	 */
 	protected abstract void initialize();
-	
+
 	protected abstract void register(T t);
+
+	protected abstract C toChannel(T t) throws IOException;
 
 	public boolean add(T t) {
 		return taskQueue.add(t);
@@ -64,5 +69,9 @@ public abstract class AbstractEngine<T extends Task<? extends Channel>>
 	 */
 	public int limit() {
 		return limit;
+	}
+
+	public ExecutorService getTaskExecutor() {
+		return taskExecutor;
 	}
 }

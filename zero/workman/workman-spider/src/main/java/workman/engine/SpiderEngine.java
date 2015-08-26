@@ -10,12 +10,16 @@ package workman.engine;
 import static org.junit.Assert.assertNotNull;
 
 import java.io.IOException;
+import java.nio.channels.AsynchronousChannelGroup;
+import java.nio.channels.AsynchronousSocketChannel;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Iterator;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import workman.task.Spider;
 
@@ -25,30 +29,18 @@ import workman.task.Spider;
  * @anthor yebin
  * @data 2015年8月26日
  */
-public class SpiderEngine extends AbstractEngine<Spider> {
+public class SpiderEngine extends
+		AbstractEngine<Spider, AsynchronousSocketChannel> {
+
+	private static final Logger logger = LogManager
+			.getLogger(SpiderEngine.class);
 
 	private Selector selector;
+	
+	private AsynchronousChannelGroup group;
 
 	public SpiderEngine(int size) {
 		super(size);
-	}
-
-	/**
-	 * 初始化
-	 * 
-	 * @throws IOException
-	 */
-	protected void initialize() {
-		try {
-			selector = Selector.open();
-			logger.info("引擎初始化完毕");
-		} catch (IOException e) {
-			logger.error("引擎初始化失败");
-			logger.debug(e);
-		} finally {
-			IOUtils.closeQuietly(selector);
-			selector = null;
-		}
 	}
 
 	/**
@@ -59,13 +51,12 @@ public class SpiderEngine extends AbstractEngine<Spider> {
 	protected void register(Spider spider) {
 		assertNotNull(spider);
 		assertNotNull(selector);
-		SelectableChannel channel = spider.getChannel();
+		AsynchronousSocketChannel channel;
 		try {
-			channel.register(selector, SelectionKey.OP_READ);
+			channel = toChannel(spider);
+			// channel.
 		} catch (IOException e) {
-			logger.error("注册任务失败：" + spider);
-			logger.debug(e);
-			IOUtils.closeQuietly(channel);
+			logger.error("注册任务失败：" + spider, e);
 		}
 	}
 
@@ -75,7 +66,7 @@ public class SpiderEngine extends AbstractEngine<Spider> {
 		status = STATUS_RUNNING;
 		while (true) {
 			// 读入数据
-			while (limit() > count) {
+			if (limit() > count) {
 				register(taskQueue.poll());
 				count++;
 			}
@@ -94,5 +85,23 @@ public class SpiderEngine extends AbstractEngine<Spider> {
 	public void close() {
 		IOUtils.closeQuietly(selector);
 		status = STATUS_CLOSED;
+	}
+
+	protected void initialize() {
+		try {
+			selector = Selector.open();
+			group = AsynchronousChannelGroup.withThreadPool(getTaskExecutor());
+			logger.info("引擎初始化完毕");
+		} catch (IOException e) {
+			logger.error("引擎初始化失败", e);
+		} finally {
+			IOUtils.closeQuietly(selector);
+			selector = null;
+		}
+	}
+
+	@Override
+	protected AsynchronousSocketChannel toChannel(Spider t) throws IOException {
+		return AsynchronousSocketChannel.open(group);
 	}
 }

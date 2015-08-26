@@ -12,7 +12,7 @@ import workman.task.Task;
  * @anthor yebin
  * @data 2015年8月26日
  */
-public interface Engine<T extends Task<? extends Channel>> {
+public interface Engine<T extends Task> {
 	static final int STATUS_UNREADY = -1;// 未准备
 	static final int STATUS_READY = 0;// 准备
 	static final int STATUS_RUNNING = 1;// 正在运行

@@ -22,31 +22,14 @@ import org.apache.logging.log4j.Logger;
  * @anthor yebin
  * @data 2015年8月26日
  */
-public class FilePrinter implements Task<FileChannel> {
-	private final Logger logger = LogManager.getLogger(getClass());
+public class FilePrinter implements Task<Path> {
+	private Path path;
 
-	private SelectableChannel selectableChannel;
-	private FileChannel fileChannel;
-
-	public FilePrinter(SelectableChannel selectableChannel, Path path) {
-		this.selectableChannel = selectableChannel;
-		try {
-			fileChannel = FileChannel.open(path);
-		} catch (IOException e) {
-			logger.error("读取文件错误：" + path);
-			logger.debug(e);
-			IOUtils.closeQuietly(selectableChannel);
-			IOUtils.closeQuietly(fileChannel);
-		}
+	public FilePrinter(Path path) {
+		this.path = path;
 	}
 
-	public void print() {
-		if (selectableChannel.isOpen() && fileChannel.isOpen()) {
-
-		}
-	}
-
-	public FileChannel getChannel() {
-		return fileChannel;
+	public Path getContext() {
+		return path;
 	}
 }
