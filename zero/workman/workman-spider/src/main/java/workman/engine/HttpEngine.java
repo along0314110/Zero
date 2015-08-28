@@ -12,18 +12,23 @@ import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
-import org.apache.http.client.CookieStore;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.concurrent.FutureCallback;
-import org.apache.http.impl.client.BasicCookieStore;
-import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
+import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.nio.client.HttpAsyncClient;
+import org.apache.http.nio.reactor.ConnectingIOReactor;
+import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import workman.task.Callback;
+import workman.task.Spider;
 
 /**
  * 引擎<br>
@@ -42,13 +47,31 @@ public class HttpEngine {
 	private final String CHARSET = "UTF-8";
 	private int status = STATUS_UNREADY;
 
-	private HttpAsyncClient client;
+	private ConnectingIOReactor ioReactor;
+	private PoolingNHttpClientConnectionManager cm;
+	private CloseableHttpAsyncClient client;
 
 	public HttpEngine() {
-		CookieStore cookieStore = new BasicCookieStore();
-		HttpAsyncClientBuilder builder = HttpAsyncClientBuilder.create();
-		client = builder.setDefaultCookieStore(cookieStore).build();
-		status = STATUS_READY;
+		try {
+			ioReactor = new DefaultConnectingIOReactor();
+			cm = new PoolingNHttpClientConnectionManager(ioReactor);
+			cm.setMaxTotal(100);
+			client = HttpAsyncClients.custom().setConnectionManager(cm).build();
+			client.start();
+			status = STATUS_READY;
+		} catch (IOReactorException e) {
+			LOG.error("初始化失败", e);
+			ioReactor = null;
+			cm = null;
+			client = null;
+		}
+	}
+	
+	/**
+	 * 发布
+	 */
+	public void execute(Spider spider) {
+		this.get(spider.getUrl(), spider.getCallback());
 	}
 
 	/**
@@ -57,7 +80,7 @@ public class HttpEngine {
 	 * @param url
 	 * @param callback
 	 */
-	public void get(final String url, CallBack<String> callback) {
+	private void get(final String url, Callback<String> callback) {
 		client.execute(new HttpGet(url), new ResponseCallBack(url, callback));
 	}
 
@@ -68,8 +91,7 @@ public class HttpEngine {
 	 * @param params
 	 * @param callback
 	 */
-	public void post(final String uri, final Map<String, String> params,
-			final CallBack<String> callback) {
+	private void post(final String uri, final Map<String, String> params, final Callback<String> callback) {
 		HttpPost post = new HttpPost(uri);
 		List<NameValuePair> formParams = new ArrayList<NameValuePair>();
 		for (Entry<String, String> e : params.entrySet()) {
@@ -98,15 +120,14 @@ public class HttpEngine {
 		private String url;
 		private String uri;
 		private Map<String, String> params;
-		private CallBack<String> callback;
+		private Callback<String> callback;
 
-		public ResponseCallBack(String url, CallBack<String> callBack) {
+		public ResponseCallBack(String url, Callback<String> callBack) {
 			this.url = url;
 			this.callback = callBack;
 		}
 
-		public ResponseCallBack(String uri, Map<String, String> params,
-				CallBack<String> callBack) {
+		public ResponseCallBack(String uri, Map<String, String> params, Callback<String> callBack) {
 			this.uri = uri;
 			this.params = params;
 			this.callback = callBack;
